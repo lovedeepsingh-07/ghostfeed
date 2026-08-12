@@ -1,11 +1,12 @@
 pub mod constants;
 pub mod engine;
 pub mod error;
+pub mod server;
 
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 async fn run() -> Result<(), error::Error> {
-    let access_token = match std::env::var("INSTAGRAM_ACCESS_TOKEN") {
+    let _ = match std::env::var("INSTAGRAM_ACCESS_TOKEN") {
         Ok(out) => out,
         Err(_) => {
             return Err(error::Error::IOError(
@@ -13,12 +14,31 @@ async fn run() -> Result<(), error::Error> {
             ));
         }
     };
-    let engine = engine::Engine::new(&access_token);
-    let convo_list = engine.get_convo_list().await?;
-    for convo_id in convo_list.iter() {
-        let message_list = engine.get_message_list(convo_id, None).await?;
-        tracing::info!("{:#?}", message_list);
-    }
+    let _ = match std::env::var("DISCORD_APP_ID") {
+        Ok(out) => out,
+        Err(_) => {
+            return Err(error::Error::IOError(
+                "You need to provide the 'DISCORD_APP_ID' environment variable".to_string(),
+            ));
+        }
+    };
+    let _ = match std::env::var("DISCORD_PUBLIC_KEY") {
+        Ok(out) => out,
+        Err(_) => {
+            return Err(error::Error::IOError(
+                "You need to provide the 'DISCORD_PUBLIC_KEY' environment variable".to_string(),
+            ));
+        }
+    };
+    let _ = match std::env::var("DISCORD_BOT_TOKEN") {
+        Ok(out) => out,
+        Err(_) => {
+            return Err(error::Error::IOError(
+                "You need to provide the 'DISCORD_BOT_TOKEN' environment variable".to_string(),
+            ));
+        }
+    };
+    server::run().await?;
     Ok(())
 }
 

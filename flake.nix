@@ -23,6 +23,8 @@
         pkgs.alejandra
         pkgs.pkg-config
         rust_pkg
+		pkgs.clang
+		pkgs.lld
         pkgs.openssl
       ];
       buildInputs = [];
