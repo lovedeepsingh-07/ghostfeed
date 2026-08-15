@@ -1,11 +1,23 @@
+pub mod bot;
+pub mod command;
 pub mod constants;
 pub mod engine;
 pub mod error;
 pub mod server;
 
+use tokio::sync::mpsc;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 async fn run() -> Result<(), error::Error> {
+    let (command_tx, mut command_rx) = mpsc::channel::<command::Command>(constants::COMMAND_CAP);
+    let _ = command_tx;
+
+    tokio::spawn(async move {
+        while let Some(cmd) = command_rx.recv().await {
+            tracing::info!("command: {:#?}", cmd);
+        }
+    });
+
     let _ = match std::env::var("INSTAGRAM_ACCESS_TOKEN") {
         Ok(out) => out,
         Err(_) => {
@@ -30,7 +42,7 @@ async fn run() -> Result<(), error::Error> {
             ));
         }
     };
-    let _ = match std::env::var("DISCORD_BOT_TOKEN") {
+    let discord_bot_token = match std::env::var("DISCORD_BOT_TOKEN") {
         Ok(out) => out,
         Err(_) => {
             return Err(error::Error::IOError(
@@ -38,7 +50,8 @@ async fn run() -> Result<(), error::Error> {
             ));
         }
     };
-    server::run().await?;
+    bot::run(&discord_bot_token).await?;
+
     Ok(())
 }
 
@@ -50,6 +63,7 @@ async fn main() {
             "ghostfeed=debug,ghostfeed_lib=debug",
         ))
         .init();
+
     if let Err(e) = run().await {
         tracing::error!("failed to run, error: {}", e);
     }

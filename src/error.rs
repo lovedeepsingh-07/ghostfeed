@@ -38,6 +38,7 @@ define_error!(
     AlreadyRunningError,
     DatabaseError,
     ChannelError,
+    SerenityError,
 );
 
 impl serde::Serialize for Error {
@@ -70,5 +71,10 @@ impl From<reqwest::Error> for Error {
 impl<T> From<tokio::sync::mpsc::error::SendError<T>> for Error {
     fn from(value: tokio::sync::mpsc::error::SendError<T>) -> Self {
         Error::ChannelError(value.to_string())
+    }
+}
+impl From<poise::serenity_prelude::Error> for Error {
+    fn from(value: poise::serenity_prelude::Error) -> Self {
+        Error::SerenityError(value.to_string())
     }
 }
