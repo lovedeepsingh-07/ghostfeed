@@ -1,5 +1,58 @@
 use crate::{constants, error};
 
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct ConvoParticipant {
+    pub id: String,
+    pub username: String,
+}
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct Convo {
+    pub id: String,
+    pub participants: Vec<ConvoParticipant>,
+}
+
+impl TryFrom<&serde_json::Value> for Convo {
+    type Error = error::Error;
+    fn try_from(value: &serde_json::Value) -> Result<Self, Self::Error> {
+        let mut output = Convo {
+            id: String::new(),
+            participants: Vec::new(),
+        };
+        output.id = value["id"]
+            .as_str()
+            .ok_or(error::Error::DeserializeError(
+                "Invalid or missing convo[id]".to_string(),
+            ))?
+            .to_string();
+        let participants =
+            value["participants"]["data"]
+                .as_array()
+                .ok_or(error::Error::DeserializeError(
+                    "Invalid or missing convo[participants][data]".to_string(),
+                ))?;
+        for curr_p in participants.iter() {
+            let mut participant = ConvoParticipant {
+                id: String::new(),
+                username: String::new(),
+            };
+            participant.id = curr_p["id"]
+                .as_str()
+                .ok_or(error::Error::DeserializeError(
+                    "Invalid or missing participants[id]".to_string(),
+                ))?
+                .to_string();
+            participant.username = curr_p["username"]
+                .as_str()
+                .ok_or(error::Error::DeserializeError(
+                    "Invalid or missing participants[username]".to_string(),
+                ))?
+                .to_string();
+            output.participants.push(participant);
+        }
+        Ok(output)
+    }
+}
+
 #[derive(Debug)]
 pub struct Engine {
     client: reqwest::Client,
@@ -25,9 +78,9 @@ impl Engine {
         Ok(res)
     }
 
-    pub async fn get_convo_list(&self) -> Result<Vec<String>, error::Error> {
+    pub async fn get_convo_list(&self) -> Result<Vec<Convo>, error::Error> {
         let convo_url = format!(
-            "{}/me/conversations?platform=instagram&access_token={}",
+            "{}/me/conversations?platform=instagram&access_token={}&fields=participants",
             self.base_url, self.access_token
         );
         let convo_url_res: serde_json::Value = self.get_json(&convo_url).await?;
@@ -37,14 +90,10 @@ impl Engine {
                 "Invalid or missing convo_list[data]".to_string(),
             ))?
             .to_vec();
-        let output = convo_list
-            .into_iter()
-            .filter_map(|obj| {
-                obj.get("id")
-                    .and_then(|id| id.as_str())
-                    .map(|id| id.to_string())
-            })
-            .collect();
+        let mut output = Vec::new();
+        for curr_convo in convo_list.iter() {
+            output.push(Convo::try_from(curr_convo)?);
+        }
         Ok(output)
     }
 

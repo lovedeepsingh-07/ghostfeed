@@ -48,19 +48,17 @@ async fn instagram_get(
 #[axum::debug_handler]
 async fn instagram_post(
     extract::State(command_tx): extract::State<Arc<mpsc::Sender<command::Command>>>,
-    extract::Path(platform_id): extract::Path<String>,
     extract::Json(body): extract::Json<serde_json::Value>,
 ) -> impl IntoResponse {
-    if platform_id != "instagram" {
-        return (http::StatusCode::METHOD_NOT_ALLOWED, "NOT SUPPORTED").into_response();
-    }
-    if let Err(e) = command_tx
-        .send(command::Command::try_from(body).unwrap())
-        .await
-    {
-        tracing::error!("error sending command: {}", e);
-        return (http::StatusCode::INTERNAL_SERVER_ERROR, "FAILED").into_response();
-    }
+    let _ = command_tx;
+    let _ = body;
+    // if let Err(e) = command_tx
+    //     .send(command::Command::try_from(body).unwrap())
+    //     .await
+    // {
+    //     tracing::error!("error sending command: {}", e);
+    //     return (http::StatusCode::INTERNAL_SERVER_ERROR, "FAILED").into_response();
+    // }
     (http::StatusCode::OK, "").into_response()
 }
 

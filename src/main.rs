@@ -1,7 +1,8 @@
 pub mod command;
 pub mod constants;
+pub mod discord;
+pub mod engine;
 pub mod error;
-pub mod orchestrator;
 pub mod webhook_server;
 
 use tokio::{
@@ -71,8 +72,8 @@ async fn run() -> Result<(), error::Error> {
     run_service(
         &mut services,
         shutdown_tx.clone(),
-        "orchestrator",
-        orchestrator::run(command_rx),
+        "command_handler",
+        command::run_handler(command_rx),
     )
     .await?;
     run_service(
@@ -80,6 +81,13 @@ async fn run() -> Result<(), error::Error> {
         shutdown_tx.clone(),
         "webhook_server",
         webhook_server::run(command_tx.clone()),
+    )
+    .await?;
+    run_service(
+        &mut services,
+        shutdown_tx.clone(),
+        "discord_bot",
+        discord::run(command_tx.clone()),
     )
     .await?;
 
