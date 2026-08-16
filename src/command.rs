@@ -1,8 +1,10 @@
 use crate::error;
+use tokio::sync::oneshot;
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug)]
 pub enum Command {
     Message(serde_json::Value),
+    VerifyInstagramWebhookToken(String, oneshot::Sender<bool>),
 }
 
 impl TryFrom<serde_json::Value> for Command {

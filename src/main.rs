@@ -1,56 +1,103 @@
-pub mod bot;
 pub mod command;
 pub mod constants;
-pub mod engine;
 pub mod error;
-pub mod server;
+pub mod orchestrator;
+pub mod webhook_server;
 
-use tokio::sync::mpsc;
+use tokio::{
+    sync::{broadcast, mpsc},
+    task::{self, JoinSet},
+};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-async fn run() -> Result<(), error::Error> {
-    let (command_tx, mut command_rx) = mpsc::channel::<command::Command>(constants::COMMAND_CAP);
-    let _ = command_tx;
+pub enum TaskResultKind {
+    Completed,
+    Failed(error::Error),
+    Shutdown,
+}
+pub struct TaskResult(String, TaskResultKind);
 
-    tokio::spawn(async move {
-        while let Some(cmd) = command_rx.recv().await {
-            tracing::info!("command: {:#?}", cmd);
+pub async fn run_service<F>(
+    services: &mut JoinSet<TaskResult>,
+    shutdown_tx: broadcast::Sender<()>,
+    service_name: &'static str,
+    service_future: F,
+) -> Result<(), error::Error>
+where
+    F: Future<Output = Result<(), error::Error>> + Send + 'static,
+{
+    let mut shutdown_rx = shutdown_tx.subscribe();
+    services.spawn(async move {
+        tracing::info!("Starting service: {}", service_name);
+        tokio::select! {
+            res = service_future => {
+                let _ = shutdown_tx.send(());
+                if let Err(e) = res {
+                    return TaskResult(service_name.to_string(), TaskResultKind::Failed(e));
+                }
+                return TaskResult(service_name.to_string(), TaskResultKind::Completed);
+            }
+            _ = shutdown_rx.recv() => {
+                return TaskResult(service_name.to_string(), TaskResultKind::Shutdown);
+            }
         }
     });
+    Ok(())
+}
 
-    let _ = match std::env::var("INSTAGRAM_ACCESS_TOKEN") {
-        Ok(out) => out,
-        Err(_) => {
-            return Err(error::Error::IOError(
-                "You need to provide the 'INSTAGRAM_ACCESS_TOKEN' environment variable".to_string(),
-            ));
+pub fn handle_service_result(result: Result<TaskResult, task::JoinError>) {
+    match result {
+        Ok(TaskResult(service_name, TaskResultKind::Completed)) => {
+            tracing::info!("{} service completed without failure", service_name);
         }
-    };
-    let _ = match std::env::var("DISCORD_APP_ID") {
-        Ok(out) => out,
-        Err(_) => {
-            return Err(error::Error::IOError(
-                "You need to provide the 'DISCORD_APP_ID' environment variable".to_string(),
-            ));
+        Ok(TaskResult(service_name, TaskResultKind::Failed(e))) => {
+            tracing::error!("{} service failed with error: {}", service_name, e);
         }
-    };
-    let _ = match std::env::var("DISCORD_PUBLIC_KEY") {
-        Ok(out) => out,
-        Err(_) => {
-            return Err(error::Error::IOError(
-                "You need to provide the 'DISCORD_PUBLIC_KEY' environment variable".to_string(),
-            ));
+        Ok(TaskResult(service_name, TaskResultKind::Shutdown)) => {
+            tracing::info!("{} service shutdown", service_name);
         }
-    };
-    let discord_bot_token = match std::env::var("DISCORD_BOT_TOKEN") {
-        Ok(out) => out,
-        Err(_) => {
-            return Err(error::Error::IOError(
-                "You need to provide the 'DISCORD_BOT_TOKEN' environment variable".to_string(),
-            ));
+        Err(e) => {
+            tracing::error!("Service task paniched: {}", e);
         }
-    };
-    bot::run(&discord_bot_token).await?;
+    }
+}
+
+async fn run() -> Result<(), error::Error> {
+    let (shutdown_tx, _) = broadcast::channel::<()>(16);
+    let mut services: JoinSet<TaskResult> = JoinSet::new();
+
+    let (command_tx, command_rx) = mpsc::channel::<command::Command>(1024);
+
+    run_service(
+        &mut services,
+        shutdown_tx.clone(),
+        "orchestrator",
+        orchestrator::run(command_rx),
+    )
+    .await?;
+    run_service(
+        &mut services,
+        shutdown_tx.clone(),
+        "webhook_server",
+        webhook_server::run(command_tx.clone()),
+    )
+    .await?;
+
+    loop {
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {
+                tracing::info!("Shutting down due to ctrl-c");
+                let _ = shutdown_tx.send(());
+            }
+            Some(result) = services.join_next() => {
+                let _ = shutdown_tx.send(());
+                handle_service_result(result);
+            }
+        };
+        if services.is_empty() {
+            break;
+        }
+    }
 
     Ok(())
 }
@@ -65,6 +112,6 @@ async fn main() {
         .init();
 
     if let Err(e) = run().await {
-        tracing::error!("failed to run, error: {}", e);
+        tracing::error!("Failed to run, error: {}", e);
     }
 }

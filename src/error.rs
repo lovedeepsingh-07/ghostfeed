@@ -78,3 +78,8 @@ impl From<poise::serenity_prelude::Error> for Error {
         Error::SerenityError(value.to_string())
     }
 }
+impl<T> From<tokio::sync::broadcast::error::SendError<T>> for Error {
+    fn from(value: tokio::sync::broadcast::error::SendError<T>) -> Self {
+        Error::ChannelError(value.to_string())
+    }
+}

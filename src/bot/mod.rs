@@ -33,7 +33,11 @@ async fn message_list(
     let _ = ctx;
     let access_token = std::env::var("INSTAGRAM_ACCESS_TOKEN").unwrap();
     let engine = engine::Engine::new(&access_token);
-    tracing::info!("{}", serde_json::to_string_pretty(&engine.get_message_list(&convo_id, None).await.unwrap()).unwrap());
+    tracing::info!(
+        "{}",
+        serde_json::to_string_pretty(&engine.get_message_list(&convo_id, None).await.unwrap())
+            .unwrap()
+    );
     Ok(())
 }
 

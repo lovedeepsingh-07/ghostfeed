@@ -8,11 +8,13 @@ tunnel:
 	token=$(cloudflared tunnel token trash-can)
 	cloudflared tunnel run --token $token
 
+# ig_user_id=$(curl -s -X GET "https://graph.instagram.com/v26.0/me?access_token=$INSTAGRAM_ACCESS_TOKEN" | jq -r ".id")
+# curl -s -X POST "https://graph.instagram.com/v26.0/$ig_user_id/subscribed_apps?subscribed_fields=messages,message_reactions,messaging_handover,messaging_optins,messaging_seen,story_insights&access_token=$INSTAGRAM_ACCESS_TOKEN" | jq
+# curl -s -X GET "https://graph.instagram.com/v26.0/$ig_user_id/subscribed_apps?access_token=$INSTAGRAM_ACCESS_TOKEN" | jq
+
 test:
 	#!/usr/bin/env bash
-	ig_user_id=$(curl -s -X GET "https://graph.instagram.com/v26.0/me?access_token=$INSTAGRAM_ACCESS_TOKEN" | jq -r ".id")
-	curl -s -X POST "https://graph.instagram.com/v26.0/$ig_user_id/subscribed_apps?subscribed_fields=messages,message_reactions,messaging_handover,messaging_optins,messaging_seen,story_insights&access_token=$INSTAGRAM_ACCESS_TOKEN" | jq
-	curl -s -X GET "https://graph.instagram.com/v26.0/$ig_user_id/subscribed_apps?access_token=$INSTAGRAM_ACCESS_TOKEN" | jq
+	curl -s -X GET "http://localhost:9999/instagram?hub_verify_token=hellobro&hub_mode=instagram&hub_challenge=9374"
 
 
 lint:
