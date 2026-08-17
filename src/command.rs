@@ -6,6 +6,7 @@ pub enum Command {
     Message(serde_json::Value),
     GetConvoList(oneshot::Sender<Vec<engine::Convo>>),
     GetMessageList(String),
+    SendMessage(String, String),
     VerifyInstagramWebhookToken(String, oneshot::Sender<bool>),
 }
 
@@ -16,18 +17,25 @@ pub async fn run_handler(mut command_rx: mpsc::Receiver<Command>) -> Result<(), 
     let instagram_access_token = std::env::var("INSTAGRAM_ACCESS_TOKEN").map_err(|_| {
         error::Error::IOError("'INSTAGRAM_ACCESS_TOKEN' env var missing".to_string())
     })?;
-    let engine = engine::Engine::new(&instagram_access_token);
+    let engine = engine::Engine::new(&instagram_access_token).await?;
 
     while let Some(command) = command_rx.recv().await {
         match command {
             Command::VerifyInstagramWebhookToken(token_to_verify, response_tx) => {
-                if response_tx.send(token_to_verify == instagram_webhook_token).is_err() {
-                    tracing::error!("Failed to send a response from orchestrator for verifying instagram webhook token");
+                if response_tx
+                    .send(token_to_verify == instagram_webhook_token)
+                    .is_err()
+                {
+                    tracing::error!(
+                        "Failed to send a response from orchestrator for verifying instagram webhook token"
+                    );
                 }
             }
             Command::GetConvoList(response_tx) => {
                 if response_tx.send(engine.get_convo_list().await?).is_err() {
-                    tracing::error!("Failed to send a response from orchestrator for converstaion list");
+                    tracing::error!(
+                        "Failed to send a response from orchestrator for converstaion list"
+                    );
                 };
             }
             Command::GetMessageList(convo_id) => {
@@ -35,6 +43,12 @@ pub async fn run_handler(mut command_rx: mpsc::Receiver<Command>) -> Result<(), 
                     "message_list: {}",
                     serde_json::to_string_pretty(&engine.get_message_list(&convo_id, None).await?)?
                 );
+            }
+            Command::SendMessage(recv_id, message) => {
+                engine.send_message(&recv_id, &message).await?;
+                // if response_tx.send(engine.send_message(&recv_id, &message).await?).is_err() {
+                //     tracing::error!("Failed to send a response from orchestrator for converstaion list");
+                // };
             }
             _ => {}
         }

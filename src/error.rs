@@ -68,6 +68,11 @@ impl From<reqwest::Error> for Error {
         Error::RequestError(value.to_string())
     }
 }
+impl From<reqwest::header::InvalidHeaderValue> for Error {
+    fn from(value: reqwest::header::InvalidHeaderValue) -> Self {
+        Error::InvalidInputError(value.to_string())
+    }
+}
 impl<T> From<tokio::sync::mpsc::error::SendError<T>> for Error {
     fn from(value: tokio::sync::mpsc::error::SendError<T>) -> Self {
         Error::ChannelError(value.to_string())

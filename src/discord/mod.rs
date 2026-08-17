@@ -1,4 +1,4 @@
-use crate::{command, error, engine};
+use crate::{command, engine, error};
 use poise::serenity_prelude as serenity;
 use tokio::sync::{mpsc, oneshot};
 
@@ -24,11 +24,16 @@ async fn convo_list(ctx: Context<'_>) -> Result<(), Error> {
         Ok(convo_list) => {
             let mut res = String::new();
             for (i, curr_convo) in convo_list.iter().enumerate() {
-                for p in curr_convo.participants.iter() {
-                    res.push_str(&format!("{}: {}", p.username, p.id));
-                    if i <= convo_list.len() {
-                        res.push('\n');
-                    }
+                // TODO remove the hardcoded username here
+                if let Some(p) = curr_convo
+                    .participants
+                    .iter()
+                    .find(|p| p.username != "iaminthebasement")
+                {
+                    res.push_str(&format!("{}: ({}, {}) ", p.username, p.id, curr_convo.id));
+                }
+                if i <= convo_list.len() {
+                    res.push('\n');
                 }
             }
             ctx.say(res).await?;
@@ -57,6 +62,25 @@ async fn message_list(
     Ok(())
 }
 
+#[poise::command(slash_command, prefix_command)]
+async fn send_message(
+    ctx: Context<'_>,
+    #[description = "Receiver ID"] recv_id: String,
+    #[description = "Message"] message: String,
+) -> Result<(), Error> {
+    ctx.defer().await?;
+    if let Err(e) = ctx
+        .data()
+        .command_tx
+        .send(command::Command::SendMessage(recv_id, message))
+        .await
+    {
+        tracing::error!("shit, {}", e);
+    }
+    ctx.say("sent a message").await?;
+    Ok(())
+}
+
 pub async fn run(command_tx: mpsc::Sender<command::Command>) -> Result<(), error::Error> {
     let _ = command_tx;
     let _ = std::env::var("DISCORD_APP_ID")
@@ -70,7 +94,7 @@ pub async fn run(command_tx: mpsc::Sender<command::Command>) -> Result<(), error
 
     let framework = poise::Framework::<Data, Error>::builder()
         .options(poise::FrameworkOptions {
-            commands: vec![convo_list(), message_list()],
+            commands: vec![convo_list(), message_list(), send_message()],
             event_handler: |_, _, _, _| Box::pin(async move { Ok(()) }),
             ..Default::default()
         })
