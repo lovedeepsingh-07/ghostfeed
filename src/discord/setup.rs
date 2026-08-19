@@ -1,10 +1,10 @@
 use super::Data;
-use crate::{command, constants, engine, error};
+use crate::{constants, error, state};
 use poise::serenity_prelude as serenity;
-use tokio::sync::{mpsc, oneshot};
+use std::sync::Arc;
 
 pub async fn run(
-    command_tx: mpsc::Sender<command::Command>,
+    state: Arc<state::State>,
     ctx: &serenity::Context,
     ready: &serenity::Ready,
     framework: &poise::Framework<Data, error::Error>,
@@ -26,37 +26,28 @@ pub async fn run(
             .await?;
     }
 
-    let (response_tx, response_rx) = oneshot::channel::<Vec<engine::Convo>>();
-    if let Err(e) = command_tx
-        .send(command::Command::GetConvoList(response_tx))
-        .await
-    {
-        tracing::error!("shit, {}", e);
-    }
-
-    if let Ok(convo_list) = response_rx.await {
-        for curr_convo in convo_list.iter() {
-            tracing::info!("{:#?}", curr_convo.id);
-            let c = ctx
-                .http
-                .create_channel(
-                    guild.id,
-                    &serde_json::json!({
-                        "name": curr_convo.id
-                    }),
-                    Some("what is this fucking reason"),
-                )
-                .await?;
-            let mut res = String::new();
-            for (i, p) in curr_convo.participants.iter().enumerate() {
-                res.push_str(&format!("{}: ({}, {}) ", p.username, p.id, curr_convo.id));
-                if i <= curr_convo.participants.len() {
-                    res.push('\n');
-                }
+    let convo_list = state.engine.get_convo_list().await?;
+    for curr_convo in convo_list.iter() {
+        tracing::info!("{:#?}", curr_convo.id);
+        let c = ctx
+            .http
+            .create_channel(
+                guild.id,
+                &serde_json::json!({
+                    "name": curr_convo.id
+                }),
+                Some("what is this fucking reason"),
+            )
+            .await?;
+        let mut res = String::new();
+        for (i, p) in curr_convo.participants.iter().enumerate() {
+            res.push_str(&format!("{}: ({}, {}) ", p.username, p.id, curr_convo.id));
+            if i <= curr_convo.participants.len() {
+                res.push('\n');
             }
-            c.say(&ctx.http, res).await?;
         }
+        c.say(&ctx.http, res).await?;
     }
 
-    Ok(Data { command_tx })
+    Ok(Data { state })
 }

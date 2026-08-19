@@ -1,16 +1,16 @@
 pub mod app_commands;
 pub mod setup;
 
-use crate::{command, error};
+use crate::{error, state};
 use poise::serenity_prelude as serenity;
-use tokio::sync::mpsc;
+use std::sync::Arc;
 
 pub struct Data {
-    pub command_tx: mpsc::Sender<command::Command>,
+    pub state: Arc<state::State>,
 }
 pub type Context<'a> = poise::Context<'a, Data, error::Error>;
 
-pub async fn run(command_tx: mpsc::Sender<command::Command>) -> Result<(), error::Error> {
+pub async fn run(state: Arc<state::State>) -> Result<(), error::Error> {
     let _ = std::env::var("DISCORD_APP_ID")
         .map_err(|_| error::Error::IOError("'DISCORD_APP_ID' env var missing".to_string()))?;
     let _ = std::env::var("DISCORD_PUBLIC_KEY")
@@ -31,7 +31,7 @@ pub async fn run(command_tx: mpsc::Sender<command::Command>) -> Result<(), error
             ..Default::default()
         })
         .setup(|ctx, ready, framework| {
-            Box::pin(async move { setup::run(command_tx, ctx, ready, framework).await })
+            Box::pin(async move { setup::run(state, ctx, ready, framework).await })
         })
         .build();
 

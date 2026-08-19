@@ -1,10 +1,9 @@
-use crate::{command, constants, error};
+use crate::{constants, error, state};
 use axum::{
     response::IntoResponse,
     {extract, http, routing},
 };
 use std::sync::Arc;
-use tokio::sync::{mpsc, oneshot};
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct InstagramWebhookParams {
@@ -15,54 +14,31 @@ pub struct InstagramWebhookParams {
 
 #[axum::debug_handler]
 async fn instagram_get(
-    extract::State(command_tx): extract::State<Arc<mpsc::Sender<command::Command>>>,
+    extract::State(state): extract::State<Arc<state::State>>,
     extract::Query(query_params): extract::Query<InstagramWebhookParams>,
 ) -> impl IntoResponse {
-    let (response_tx, response_rx) = oneshot::channel::<bool>();
-    if let Err(e) = command_tx
-        .send(command::Command::VerifyInstagramWebhookToken(
-            query_params.hub_verify_token.clone(),
-            response_tx,
-        ))
-        .await
+    if state
+        .engine
+        .is_webhook_token_valid(&query_params.hub_verify_token)
     {
-        tracing::error!("Failed to send command in the channel, {}", e);
-    }
-    match response_rx.await {
-        Ok(is_verified) => {
-            if is_verified {
-                tracing::info!("verified webhook connection");
-                return (http::StatusCode::OK, query_params.hub_challenge.to_string())
-                    .into_response();
-            } else {
-                tracing::info!("invalid verify token");
-            }
-        }
-        Err(e) => {
-            tracing::error!("Failed to receive response from orchestrator, {}", e);
-        }
+        return (http::StatusCode::OK, query_params.hub_challenge.to_string()).into_response();
+    } else {
+        tracing::info!("Invalid instagram webhook token");
     }
     (http::StatusCode::OK, "").into_response()
 }
 
 #[axum::debug_handler]
 async fn instagram_post(
-    extract::State(command_tx): extract::State<Arc<mpsc::Sender<command::Command>>>,
+    extract::State(state): extract::State<Arc<state::State>>,
     extract::Json(body): extract::Json<serde_json::Value>,
 ) -> impl IntoResponse {
-    let _ = command_tx;
+    let _ = state;
     let _ = body;
-    // if let Err(e) = command_tx
-    //     .send(command::Command::try_from(body).unwrap())
-    //     .await
-    // {
-    //     tracing::error!("error sending command: {}", e);
-    //     return (http::StatusCode::INTERNAL_SERVER_ERROR, "FAILED").into_response();
-    // }
     (http::StatusCode::OK, "").into_response()
 }
 
-pub async fn run(command_tx: mpsc::Sender<command::Command>) -> Result<(), error::Error> {
+pub async fn run(state: Arc<state::State>) -> Result<(), error::Error> {
     let router = axum::Router::new()
         .route(
             "/instagram",
@@ -72,7 +48,7 @@ pub async fn run(command_tx: mpsc::Sender<command::Command>) -> Result<(), error
             "/health",
             routing::get(|| async move { (http::StatusCode::OK, "HEALTHY").into_response() }),
         )
-        .with_state(Arc::new(command_tx));
+        .with_state(state);
 
     let listener =
         tokio::net::TcpListener::bind((constants::SERVER_ADDRESS, constants::SERVER_PORT)).await?;

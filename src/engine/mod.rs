@@ -8,6 +8,7 @@ use reqwest as req;
 pub struct Engine {
     client: req::Client,
     access_token: String,
+    webhook_token: String,
     base_url: String,
     user_id: String,
 }
@@ -34,7 +35,7 @@ async fn post_json(
 }
 
 impl Engine {
-    pub async fn new(access_token: &str) -> Result<Self, error::Error> {
+    pub async fn new(access_token: &str, webhook_token: &str) -> Result<Self, error::Error> {
         let client = reqwest::Client::new();
         let base_url = format!(
             "{}/{}",
@@ -56,9 +57,14 @@ impl Engine {
         Ok(Self {
             client,
             access_token: access_token.to_string(),
+            webhook_token: webhook_token.to_string(),
             base_url,
             user_id,
         })
+    }
+
+    pub fn is_webhook_token_valid(&self, token_to_verify: &str) -> bool {
+        token_to_verify == self.webhook_token
     }
 
     pub async fn get_convo_list(&self) -> Result<Vec<convo::Convo>, error::Error> {

@@ -1,5 +1,5 @@
 use super::super::Context;
-use crate::{command, error};
+use crate::error;
 
 #[poise::command(slash_command, prefix_command)]
 pub async fn send_message(
@@ -8,14 +8,10 @@ pub async fn send_message(
     #[description = "Message"] message: String,
 ) -> Result<(), error::Error> {
     ctx.defer().await?;
-    if let Err(e) = ctx
-        .data()
-        .command_tx
-        .send(command::Command::SendMessage(recv_id, message))
-        .await
-    {
-        tracing::error!("shit, {}", e);
-    }
+
+    let data = ctx.data();
+    data.state.engine.send_message(&recv_id, &message).await?;
+
     ctx.say("sent a message").await?;
     Ok(())
 }

@@ -1,13 +1,13 @@
-pub mod command;
 pub mod constants;
 pub mod discord;
 pub mod engine;
 pub mod error;
-pub mod schema;
+pub mod state;
 pub mod webhook_server;
 
+use std::sync::Arc;
 use tokio::{
-    sync::{broadcast, mpsc},
+    sync::broadcast,
     task::{self, JoinSet},
 };
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -68,27 +68,27 @@ async fn run() -> Result<(), error::Error> {
     let (shutdown_tx, _) = broadcast::channel::<()>(16);
     let mut services: JoinSet<TaskResult> = JoinSet::new();
 
-    let (command_tx, command_rx) = mpsc::channel::<command::Command>(1024);
+    let instagram_access_token = std::env::var("INSTAGRAM_ACCESS_TOKEN").map_err(|_| {
+        error::Error::IOError("'INSTAGRAM_ACCESS_TOKEN' env var missing".to_string())
+    })?;
+    let instagram_webhook_token = std::env::var("INSTAGRAM_WEBHOOK_TOKEN").map_err(|_| {
+        error::Error::IOError("'INSTAGRAM_WEBHOOK_TOKEN' env var missing".to_string())
+    })?;
+    let state =
+        Arc::new(state::State::new(&instagram_access_token, &instagram_webhook_token).await?);
 
     run_service(
         &mut services,
         shutdown_tx.clone(),
-        "command_handler",
-        command::run_handler(command_rx),
-    )
-    .await?;
-    run_service(
-        &mut services,
-        shutdown_tx.clone(),
         "webhook_server",
-        webhook_server::run(command_tx.clone()),
+        webhook_server::run(state.clone()),
     )
     .await?;
     run_service(
         &mut services,
         shutdown_tx.clone(),
         "discord_bot",
-        discord::run(command_tx.clone()),
+        discord::run(state.clone()),
     )
     .await?;
 
