@@ -26,6 +26,7 @@
         pkgs.clang
         pkgs.lld
         pkgs.openssl
+		pkgs.turso
       ];
       buildInputs = [];
       shellHook = '''';

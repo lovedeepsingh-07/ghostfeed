@@ -1,88 +1,16 @@
-use crate::{command, engine, error};
-use poise::serenity_prelude as serenity;
-use tokio::sync::{mpsc, oneshot};
+pub mod app_commands;
+pub mod setup;
 
-struct Data {
+use crate::{command, error};
+use poise::serenity_prelude as serenity;
+use tokio::sync::mpsc;
+
+pub struct Data {
     pub command_tx: mpsc::Sender<command::Command>,
 }
-type Error = Box<dyn std::error::Error + Send + Sync>;
-type Context<'a> = poise::Context<'a, Data, Error>;
-
-#[poise::command(slash_command, prefix_command)]
-async fn convo_list(ctx: Context<'_>) -> Result<(), Error> {
-    ctx.defer().await?;
-    let (response_tx, response_rx) = oneshot::channel::<Vec<engine::Convo>>();
-    if let Err(e) = ctx
-        .data()
-        .command_tx
-        .send(command::Command::GetConvoList(response_tx))
-        .await
-    {
-        tracing::error!("shit, {}", e);
-    }
-    match response_rx.await {
-        Ok(convo_list) => {
-            let mut res = String::new();
-            for (i, curr_convo) in convo_list.iter().enumerate() {
-                // TODO remove the hardcoded username here
-                if let Some(p) = curr_convo
-                    .participants
-                    .iter()
-                    .find(|p| p.username != "iaminthebasement")
-                {
-                    res.push_str(&format!("{}: ({}, {}) ", p.username, p.id, curr_convo.id));
-                }
-                if i <= convo_list.len() {
-                    res.push('\n');
-                }
-            }
-            ctx.say(res).await?;
-        }
-        Err(_) => {
-            tracing::error!("failed to do shit");
-        }
-    }
-    Ok(())
-}
-
-#[poise::command(slash_command, prefix_command)]
-async fn message_list(
-    ctx: Context<'_>,
-    #[description = "Conversation ID"] convo_id: String,
-) -> Result<(), Error> {
-    if let Err(e) = ctx
-        .data()
-        .command_tx
-        .send(command::Command::GetMessageList(convo_id))
-        .await
-    {
-        tracing::error!("shit, {}", e);
-    }
-    ctx.say("yeah a message list").await?;
-    Ok(())
-}
-
-#[poise::command(slash_command, prefix_command)]
-async fn send_message(
-    ctx: Context<'_>,
-    #[description = "Receiver ID"] recv_id: String,
-    #[description = "Message"] message: String,
-) -> Result<(), Error> {
-    ctx.defer().await?;
-    if let Err(e) = ctx
-        .data()
-        .command_tx
-        .send(command::Command::SendMessage(recv_id, message))
-        .await
-    {
-        tracing::error!("shit, {}", e);
-    }
-    ctx.say("sent a message").await?;
-    Ok(())
-}
+pub type Context<'a> = poise::Context<'a, Data, error::Error>;
 
 pub async fn run(command_tx: mpsc::Sender<command::Command>) -> Result<(), error::Error> {
-    let _ = command_tx;
     let _ = std::env::var("DISCORD_APP_ID")
         .map_err(|_| error::Error::IOError("'DISCORD_APP_ID' env var missing".to_string()))?;
     let _ = std::env::var("DISCORD_PUBLIC_KEY")
@@ -92,17 +20,18 @@ pub async fn run(command_tx: mpsc::Sender<command::Command>) -> Result<(), error
     let intents =
         serenity::GatewayIntents::GUILD_MESSAGES | serenity::GatewayIntents::DIRECT_MESSAGES;
 
-    let framework = poise::Framework::<Data, Error>::builder()
+    let framework = poise::Framework::<Data, error::Error>::builder()
         .options(poise::FrameworkOptions {
-            commands: vec![convo_list(), message_list(), send_message()],
+            commands: vec![
+                app_commands::convo_list(),
+                app_commands::message_list(),
+                app_commands::send_message(),
+            ],
             event_handler: |_, _, _, _| Box::pin(async move { Ok(()) }),
             ..Default::default()
         })
-        .setup(|ctx, _ready, framework| {
-            Box::pin(async move {
-                poise::builtins::register_globally(ctx, &framework.options().commands).await?;
-                Ok(Data { command_tx })
-            })
+        .setup(|ctx, ready, framework| {
+            Box::pin(async move { setup::run(command_tx, ctx, ready, framework).await })
         })
         .build();
 

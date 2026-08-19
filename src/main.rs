@@ -3,6 +3,7 @@ pub mod constants;
 pub mod discord;
 pub mod engine;
 pub mod error;
+pub mod schema;
 pub mod webhook_server;
 
 use tokio::{
@@ -118,6 +119,25 @@ async fn main() {
             "ghostfeed=debug,ghostfeed_lib=debug",
         ))
         .init();
+
+    // let db = turso::Builder::new_local("./ghostfeed.db").build().await.unwrap();
+    // let conn = db.connect().unwrap();
+    // conn.execute(
+    //     "CREATE TABLE IF NOT EXISTS users (
+    //         id INTEGER PRIMARY KEY AUTOINCREMENT,
+    //         username TEXT NOT NULL
+    //     )",
+    //     ()
+    // ).await.unwrap();
+    // conn.execute("INSERT INTO users (username) VALUES (?)", ("alice",)).await.unwrap();
+    // conn.execute("INSERT INTO users (username) VALUES (?)", ("bob",)).await.unwrap();
+    // let mut res = conn.query("SELECT * FROM users", ()).await.unwrap();
+    // let row = res.next().await.unwrap().unwrap();
+    // let value = row.get_value(1).unwrap();
+    // tracing::info!("{:#?}", value);
+    // let row = res.next().await.unwrap().unwrap();
+    // let value = row.get_value(1).unwrap();
+    // tracing::info!("{:#?}", value);
 
     if let Err(e) = run().await {
         tracing::error!("Failed to run, error: {}", e);
